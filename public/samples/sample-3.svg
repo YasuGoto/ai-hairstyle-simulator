@@ -1,0 +1,22 @@
+<svg width="800" height="1000" viewBox="0 0 800 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg3" x1="0" y1="0" x2="800" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E9FFE3"/>
+      <stop offset="1" stop-color="#F9D8FF"/>
+    </linearGradient>
+    <linearGradient id="hair3" x1="210" y1="180" x2="620" y2="620" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2F2A2A"/>
+      <stop offset="1" stop-color="#5C3B2A"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1000" rx="40" fill="url(#bg3)"/>
+  <circle cx="400" cy="430" r="170" fill="#F3C6B4"/>
+  <path
+    d="M200 400C220 250 320 160 400 160C480 160 580 250 600 400C610 560 520 680 400 680C280 680 190 560 200 400Z"
+    fill="url(#hair3)"
+  />
+  <ellipse cx="340" cy="430" rx="20" ry="12" fill="#2B1F16"/>
+  <ellipse cx="460" cy="430" rx="20" ry="12" fill="#2B1F16"/>
+  <rect x="360" y="520" width="80" height="20" rx="10" fill="#C97A68"/>
+  <text x="40" y="940" fill="#2B2B2B" font-size="28" font-family="Arial">Mock Result 03</text>
+</svg>
