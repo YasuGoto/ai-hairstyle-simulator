@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import HistoryList from "@/components/HistoryList";
+import ImagePreview from "@/components/ImagePreview";
+import StyleSelector from "@/components/StyleSelector";
+import {
+  clearHistory,
+  loadHistory,
+  saveHistoryItem,
+  type HistoryItem,
+} from "@/lib/history";
 
-type GeneratedImage = {
-  url: string;
-  filename: string;
-};
-
-const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+const STYLE_OPTIONS = ["ショート", "ボブ", "ロング", "ツーブロック", "マッシュ", "ウルフ"];
 const ACCEPTED_TYPES = ["image/jpeg", "image/png"];
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
 const useObjectUrl = (file: File | null) => {
-  const [url, setUrl] = useState<string>("");
+  const [url, setUrl] = useState("");
 
   useEffect(() => {
     if (!file) {
@@ -40,43 +45,55 @@ const validateImage = (file: File) => {
   return "";
 };
 
+const createHistoryId = () =>
+  `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 export default function Home() {
-  const [faceFile, setFaceFile] = useState<File | null>(null);
-  const [hairFile, setHairFile] = useState<File | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [style, setStyle] = useState(STYLE_OPTIONS[0]);
+  const [resultUrl, setResultUrl] = useState("");
+  const [history, setHistory] = useState<HistoryItem[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
-  const [results, setResults] = useState<GeneratedImage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [historyInputUrl, setHistoryInputUrl] = useState("");
 
-  const facePreview = useObjectUrl(faceFile);
-  const hairPreview = useObjectUrl(hairFile);
+  const filePreviewUrl = useObjectUrl(selectedFile);
+  const inputPreviewUrl = filePreviewUrl || historyInputUrl;
 
-  const canGenerate = useMemo(
-    () => Boolean(faceFile && hairFile && !isLoading),
-    [faceFile, hairFile, isLoading]
+  useEffect(() => {
+    setHistory(loadHistory());
+  }, []);
+
+  const canTransform = useMemo(
+    () => Boolean(selectedFile && style && !isLoading),
+    [selectedFile, style, isLoading]
   );
 
-  const handleFileChange =
-    (setter: (file: File | null) => void) =>
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0] ?? null;
-      if (!file) {
-        setter(null);
-        return;
-      }
-      const error = validateImage(file);
-      if (error) {
-        event.target.value = "";
-        setter(null);
-        setErrorMessage(error);
-        return;
-      }
-      setErrorMessage("");
-      setter(file);
-    };
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+    const error = validateImage(file);
+    if (error) {
+      event.target.value = "";
+      setSelectedFile(null);
+      setErrorMessage(error);
+      return;
+    }
+    setErrorMessage("");
+    setHistoryInputUrl("");
+    setSelectedFile(file);
+  };
 
-  const handleGenerate = async () => {
-    if (!faceFile || !hairFile) {
-      setErrorMessage("顔写真と髪型参考画像の両方を選択してください。");
+  const handleTransform = async () => {
+    if (!selectedFile) {
+      setErrorMessage("画像を選択してください。");
+      return;
+    }
+    if (!style) {
+      setErrorMessage("髪型スタイルを選択してください。");
       return;
     }
 
@@ -85,153 +102,144 @@ export default function Home() {
 
     try {
       const formData = new FormData();
-      formData.append("face", faceFile);
-      formData.append("hair", hairFile);
+      formData.append("image", selectedFile);
+      formData.append("style", style);
 
-      const response = await fetch("/api/generate", {
+      const response = await fetch("/api/transform", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.message || "生成に失敗しました。");
+        throw new Error(payload?.message || "変換に失敗しました。");
       }
 
-      const data = (await response.json()) as { images: GeneratedImage[] };
-      if (!data.images?.length) {
-        throw new Error("生成画像が取得できませんでした。");
+      const data = (await response.json()) as { resultUrl: string };
+      if (!data.resultUrl) {
+        throw new Error("変換結果が取得できませんでした。");
       }
-      setResults(data.images);
+
+      setResultUrl(data.resultUrl);
+
+      if (inputPreviewUrl) {
+        const newItem: HistoryItem = {
+          id: createHistoryId(),
+          createdAt: new Date().toISOString(),
+          style,
+          inputUrl: inputPreviewUrl,
+          outputUrl: data.resultUrl,
+        };
+        const nextHistory = saveHistoryItem(newItem);
+        setHistory(nextHistory);
+      }
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "生成に失敗しました。";
+        error instanceof Error ? error.message : "変換に失敗しました。";
       setErrorMessage(message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDownload = async (image: GeneratedImage) => {
-    try {
-      const response = await fetch(image.url);
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
+  const handleSelectHistory = (item: HistoryItem) => {
+    setResultUrl(item.outputUrl);
+    setHistoryInputUrl(item.inputUrl);
+    setStyle(item.style);
+  };
 
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = image.filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-
-      URL.revokeObjectURL(objectUrl);
-    } catch {
-      setErrorMessage("ダウンロードに失敗しました。");
-    }
+  const handleClearHistory = () => {
+    clearHistory();
+    setHistory([]);
   };
 
   return (
-    <main className="page">
-      <div className="shell">
-        <header className="header">
-          <p className="eyebrow">AI Hair Simulation</p>
-          <h1>AI髪型シミュレーション</h1>
-          <p className="subtext">
-            顔写真と理想の髪型画像をアップロードして、髪型だけを寄せた自然な仕上がりを確認できます。
-            現在はポートフォリオ用のモック生成です。
+    <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900 sm:px-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <header className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+            AI Hair Simulator
+          </p>
+          <h1 className="text-3xl font-bold sm:text-4xl">髪型AIシミュレーター</h1>
+          <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
+            画像をアップロードして髪型スタイルを選ぶだけで、変換結果をすぐに確認できるMVPです。
           </p>
         </header>
 
-        <section className="card">
-          <h2>画像アップロード</h2>
-          <div className="grid">
-            <div className="upload">
-              <label className="label" htmlFor="face-upload">
-                顔写真
-              </label>
-              <input
-                id="face-upload"
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={handleFileChange(setFaceFile)}
-              />
-              <div className="preview">
-                {facePreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={facePreview} alt="顔写真プレビュー" />
-                ) : (
-                  <span>プレビューなし</span>
-                )}
-              </div>
-            </div>
+        <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">画像とスタイルを選択</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              JPG/PNG、10MBまで対応。変換処理はダミーAPIです。
+            </p>
 
-            <div className="upload">
-              <label className="label" htmlFor="hair-upload">
-                髪型参考画像
-              </label>
-              <input
-                id="hair-upload"
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={handleFileChange(setHairFile)}
-              />
-              <div className="preview">
-                {hairPreview ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={hairPreview} alt="髪型参考プレビュー" />
-                ) : (
-                  <span>プレビューなし</span>
-                )}
+            <div className="mt-5 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">
+                  画像アップロード
+                </label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleFileChange}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
+                />
               </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-700">
+                  髪型スタイルを選択
+                </p>
+                <StyleSelector
+                  options={STYLE_OPTIONS}
+                  value={style}
+                  onChange={setStyle}
+                />
+              </div>
+
+              {errorMessage && (
+                <p className="rounded-xl bg-rose-50 px-4 py-2 text-sm text-rose-600">
+                  {errorMessage}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleTransform}
+                disabled={!canTransform}
+                className="w-full rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {isLoading ? "変換中..." : "変換する"}
+              </button>
             </div>
           </div>
 
-          <div className="actions">
-            <button
-              className="button primary"
-              type="button"
-              onClick={handleGenerate}
-              disabled={!canGenerate}
-            >
-              {isLoading ? "生成中..." : "生成"}
-            </button>
-            <p className="hint">JPG/PNG、10MBまで対応。</p>
+          <div className="grid gap-4">
+            <ImagePreview
+              title="入力プレビュー"
+              imageUrl={inputPreviewUrl}
+              emptyText="画像を選択してください"
+            />
+            <ImagePreview
+              title="変換結果"
+              imageUrl={resultUrl}
+              emptyText="ここに変換結果が表示されます"
+            />
           </div>
-
-          {errorMessage && <p className="error">{errorMessage}</p>}
         </section>
 
-        <section className="card">
-          <div className="sectionHeader">
-            <h2>生成結果</h2>
-            <p className="hint">3枚のモック画像が表示されます。</p>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold">変換履歴</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            localStorageに保存して、あとから再表示できます。
+          </p>
+          <div className="mt-4">
+            <HistoryList
+              items={history}
+              onSelect={handleSelectHistory}
+              onClear={handleClearHistory}
+            />
           </div>
-
-          {results.length === 0 ? (
-            <p className="empty">まだ生成結果がありません。</p>
-          ) : (
-            <div className="results">
-              {results.map((image, index) => (
-                <div className="resultCard" key={image.url}>
-                  <div className="resultImage">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={image.url}
-                      alt={`生成結果${index + 1}`}
-                    />
-                  </div>
-                  <button
-                    className="button ghost"
-                    type="button"
-                    onClick={() => handleDownload(image)}
-                  >
-                    ダウンロード
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
       </div>
     </main>
