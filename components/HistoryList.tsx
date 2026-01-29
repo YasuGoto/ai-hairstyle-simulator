@@ -35,16 +35,30 @@ export default function HistoryList({ items, onSelect, onClear }: HistoryListPro
             onClick={() => onSelect(item)}
             className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-slate-300"
           >
-            <div className="h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.outputUrl}
-                alt={item.style}
-                className="h-full w-full object-cover"
-              />
+            <div className="grid h-16 w-24 grid-cols-3 gap-1">
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={item.inputUrl} alt="入力画像" className="h-full w-full object-cover" />
+              </div>
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.referenceUrl}
+                  alt="参考画像"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.outputUrl}
+                  alt="変換結果"
+                  className="h-full w-full object-cover"
+                />
+              </div>
             </div>
             <div>
-              <p className="text-sm font-semibold text-slate-800">{item.style}</p>
+              <p className="text-sm font-semibold text-slate-800">変換結果</p>
               <p className="text-xs text-slate-500">
                 {new Date(item.createdAt).toLocaleString()}
               </p>

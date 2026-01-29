@@ -11,12 +11,12 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Features
 
-- JPG/PNGアップロード + プレビュー
-- 髪型スタイル選択
+- JPG/PNGの画像を2枚アップロード（自分の写真・参考画像）
+- それぞれのプレビュー表示
 - ダミーの変換API（`/api/transform`）
 - 変換履歴をlocalStorageに保存・再表示
 
 ## Notes
 
 - 認証やDBは使っていません。
-- 変換結果はダミーで、アップロード画像を返すだけの実装です。
+- 変換結果はダミーで、自分の写真を返すだけの実装です。

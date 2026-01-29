@@ -7,25 +7,35 @@ const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const file = formData.get("image");
-    const style = String(formData.get("style") ?? "").trim();
+    const selfImage = formData.get("selfImage");
+    const styleImage = formData.get("styleImage");
 
-    if (!file || !(file instanceof File)) {
-      return NextResponse.json({ message: "画像が見つかりません。" }, { status: 400 });
+    if (!selfImage || !(selfImage instanceof File)) {
+      return NextResponse.json({ message: "自分の写真が見つかりません。" }, { status: 400 });
     }
 
-    if (!style) {
-      return NextResponse.json({ message: "スタイルを選択してください。" }, { status: 400 });
-    }
-
-    if (!ACCEPTED_TYPES.includes(file.type)) {
+    if (!styleImage || !(styleImage instanceof File)) {
       return NextResponse.json(
-        { message: "JPGまたはPNGのみ対応しています。" },
+        { message: "参考の髪型画像が見つかりません。" },
         { status: 400 }
       );
     }
 
-    if (file.size > MAX_SIZE_BYTES) {
+    if (!ACCEPTED_TYPES.includes(selfImage.type)) {
+      return NextResponse.json(
+        { message: "自分の写真はJPGまたはPNGのみ対応しています。" },
+        { status: 400 }
+      );
+    }
+
+    if (!ACCEPTED_TYPES.includes(styleImage.type)) {
+      return NextResponse.json(
+        { message: "参考画像はJPGまたはPNGのみ対応しています。" },
+        { status: 400 }
+      );
+    }
+
+    if (selfImage.size > MAX_SIZE_BYTES || styleImage.size > MAX_SIZE_BYTES) {
       return NextResponse.json(
         { message: "画像サイズは10MB以下にしてください。" },
         { status: 400 }
@@ -34,13 +44,12 @@ export async function POST(request: Request) {
 
     await new Promise((resolve) => setTimeout(resolve, WAIT_MS));
 
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = Buffer.from(await selfImage.arrayBuffer());
     const base64 = buffer.toString("base64");
-    const resultUrl = `data:${file.type};base64,${base64}`;
+    const resultUrl = `data:${selfImage.type};base64,${base64}`;
 
     return NextResponse.json({
       resultUrl,
-      style,
       processedAt: new Date().toISOString(),
     });
   } catch (error) {

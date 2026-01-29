@@ -1,8 +1,8 @@
 export type HistoryItem = {
   id: string;
   createdAt: string;
-  style: string;
   inputUrl: string;
+  referenceUrl: string;
   outputUrl: string;
 };
 
@@ -19,7 +19,18 @@ export const loadHistory = (): HistoryItem[] => {
       return [];
     }
     const parsed = JSON.parse(raw) as HistoryItem[];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter(
+      (item) =>
+        item &&
+        typeof item.id === "string" &&
+        typeof item.createdAt === "string" &&
+        typeof item.inputUrl === "string" &&
+        typeof item.referenceUrl === "string" &&
+        typeof item.outputUrl === "string"
+    );
   } catch {
     return [];
   }

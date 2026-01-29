@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import HistoryList from "@/components/HistoryList";
 import ImagePreview from "@/components/ImagePreview";
-import StyleSelector from "@/components/StyleSelector";
 import {
   clearHistory,
   loadHistory,
@@ -11,7 +10,6 @@ import {
   type HistoryItem,
 } from "@/lib/history";
 
-const STYLE_OPTIONS = ["ショート", "ボブ", "ロング", "ツーブロック", "マッシュ", "ウルフ"];
 const ACCEPTED_TYPES = ["image/jpeg", "image/png"];
 const MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
@@ -35,12 +33,12 @@ const useObjectUrl = (file: File | null) => {
   return url;
 };
 
-const validateImage = (file: File) => {
+const validateImage = (file: File, label: string) => {
   if (!ACCEPTED_TYPES.includes(file.type)) {
-    return "JPGまたはPNGのみ対応しています。";
+    return `${label}はJPGまたはPNGのみ対応しています。`;
   }
   if (file.size > MAX_SIZE_BYTES) {
-    return "画像サイズは10MB以下にしてください。";
+    return `${label}は10MB以下にしてください。`;
   }
   return "";
 };
@@ -48,52 +46,68 @@ const validateImage = (file: File) => {
 const createHistoryId = () =>
   `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("画像の読み込みに失敗しました。"));
+    reader.readAsDataURL(file);
+  });
+
 export default function Home() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [style, setStyle] = useState(STYLE_OPTIONS[0]);
+  const [selfFile, setSelfFile] = useState<File | null>(null);
+  const [styleFile, setStyleFile] = useState<File | null>(null);
   const [resultUrl, setResultUrl] = useState("");
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [historyInputUrl, setHistoryInputUrl] = useState("");
+  const [historySelfUrl, setHistorySelfUrl] = useState("");
+  const [historyStyleUrl, setHistoryStyleUrl] = useState("");
 
-  const filePreviewUrl = useObjectUrl(selectedFile);
-  const inputPreviewUrl = filePreviewUrl || historyInputUrl;
+  const selfPreviewUrl = useObjectUrl(selfFile) || historySelfUrl;
+  const stylePreviewUrl = useObjectUrl(styleFile) || historyStyleUrl;
 
   useEffect(() => {
     setHistory(loadHistory());
   }, []);
 
   const canTransform = useMemo(
-    () => Boolean(selectedFile && style && !isLoading),
-    [selectedFile, style, isLoading]
+    () => Boolean(selfFile && styleFile && !isLoading),
+    [selfFile, styleFile, isLoading]
   );
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    if (!file) {
-      setSelectedFile(null);
-      return;
-    }
-    const error = validateImage(file);
-    if (error) {
-      event.target.value = "";
-      setSelectedFile(null);
-      setErrorMessage(error);
-      return;
-    }
-    setErrorMessage("");
-    setHistoryInputUrl("");
-    setSelectedFile(file);
-  };
+  const handleFileChange =
+    (
+      label: string,
+      setter: (file: File | null) => void,
+      clearHistoryUrl: () => void
+    ) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      if (!file) {
+        setter(null);
+        return;
+      }
+      const error = validateImage(file, label);
+      if (error) {
+        event.target.value = "";
+        setter(null);
+        setErrorMessage(error);
+        return;
+      }
+      setErrorMessage("");
+      clearHistoryUrl();
+      setResultUrl("");
+      setter(file);
+    };
 
   const handleTransform = async () => {
-    if (!selectedFile) {
-      setErrorMessage("画像を選択してください。");
+    if (!selfFile) {
+      setErrorMessage("自分の写真を選択してください。");
       return;
     }
-    if (!style) {
-      setErrorMessage("髪型スタイルを選択してください。");
+    if (!styleFile) {
+      setErrorMessage("参考の髪型画像を選択してください。");
       return;
     }
 
@@ -102,8 +116,8 @@ export default function Home() {
 
     try {
       const formData = new FormData();
-      formData.append("image", selectedFile);
-      formData.append("style", style);
+      formData.append("selfImage", selfFile);
+      formData.append("styleImage", styleFile);
 
       const response = await fetch("/api/transform", {
         method: "POST",
@@ -122,17 +136,20 @@ export default function Home() {
 
       setResultUrl(data.resultUrl);
 
-      if (inputPreviewUrl) {
-        const newItem: HistoryItem = {
-          id: createHistoryId(),
-          createdAt: new Date().toISOString(),
-          style,
-          inputUrl: inputPreviewUrl,
-          outputUrl: data.resultUrl,
-        };
-        const nextHistory = saveHistoryItem(newItem);
-        setHistory(nextHistory);
-      }
+      const [inputUrl, referenceUrl] = await Promise.all([
+        readFileAsDataUrl(selfFile),
+        readFileAsDataUrl(styleFile),
+      ]);
+
+      const newItem: HistoryItem = {
+        id: createHistoryId(),
+        createdAt: new Date().toISOString(),
+        inputUrl,
+        referenceUrl,
+        outputUrl: data.resultUrl,
+      };
+      const nextHistory = saveHistoryItem(newItem);
+      setHistory(nextHistory);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "変換に失敗しました。";
@@ -144,8 +161,10 @@ export default function Home() {
 
   const handleSelectHistory = (item: HistoryItem) => {
     setResultUrl(item.outputUrl);
-    setHistoryInputUrl(item.inputUrl);
-    setStyle(item.style);
+    setHistorySelfUrl(item.inputUrl);
+    setHistoryStyleUrl(item.referenceUrl);
+    setSelfFile(null);
+    setStyleFile(null);
   };
 
   const handleClearHistory = () => {
@@ -162,13 +181,13 @@ export default function Home() {
           </p>
           <h1 className="text-3xl font-bold sm:text-4xl">髪型AIシミュレーター</h1>
           <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
-            画像をアップロードして髪型スタイルを選ぶだけで、変換結果をすぐに確認できるMVPです。
+            自分の写真と参考の髪型画像をアップロードして、AI変換結果を確認するMVPです。
           </p>
         </header>
 
         <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">画像とスタイルを選択</h2>
+            <h2 className="text-lg font-semibold">画像を2枚アップロード</h2>
             <p className="mt-2 text-sm text-slate-500">
               JPG/PNG、10MBまで対応。変換処理はダミーAPIです。
             </p>
@@ -176,24 +195,29 @@ export default function Home() {
             <div className="mt-5 space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">
-                  画像アップロード
+                  自分の写真（顔写真）
                 </label>
                 <input
                   type="file"
                   accept="image/png,image/jpeg"
-                  onChange={handleFileChange}
+                  onChange={handleFileChange("自分の写真", setSelfFile, () =>
+                    setHistorySelfUrl("")
+                  )}
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
                 />
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-slate-700">
-                  髪型スタイルを選択
-                </p>
-                <StyleSelector
-                  options={STYLE_OPTIONS}
-                  value={style}
-                  onChange={setStyle}
+                <label className="text-sm font-semibold text-slate-700">
+                  参考の髪型画像
+                </label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={handleFileChange("参考画像", setStyleFile, () =>
+                    setHistoryStyleUrl("")
+                  )}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm"
                 />
               </div>
 
@@ -216,9 +240,14 @@ export default function Home() {
 
           <div className="grid gap-4">
             <ImagePreview
-              title="入力プレビュー"
-              imageUrl={inputPreviewUrl}
-              emptyText="画像を選択してください"
+              title="自分の写真プレビュー"
+              imageUrl={selfPreviewUrl}
+              emptyText="自分の写真を選択してください"
+            />
+            <ImagePreview
+              title="参考画像プレビュー"
+              imageUrl={stylePreviewUrl}
+              emptyText="参考画像を選択してください"
             />
             <ImagePreview
               title="変換結果"
