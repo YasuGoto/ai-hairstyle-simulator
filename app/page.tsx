@@ -58,6 +58,7 @@ export default function Home() {
   const [selfFile, setSelfFile] = useState<File | null>(null);
   const [styleFile, setStyleFile] = useState<File | null>(null);
   const [resultUrl, setResultUrl] = useState("");
+  const [sampleUrl, setSampleUrl] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +70,7 @@ export default function Home() {
 
   useEffect(() => {
     setHistory(loadHistory());
+    getStyleImages();
   }, []);
 
   const canTransform = useMemo(
@@ -159,6 +161,47 @@ export default function Home() {
     }
   };
 
+  const getStyleImages = async () => {
+    try {
+      const response = await fetch("/api/style", {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        await response.json().catch(() => ({}));
+        throw new Error("スタイル画像の取得に失敗しました。");
+      }
+
+      const data = await response.json();
+
+      setSampleUrl(
+        data.styles.map(
+          (style: { imageUrl: string }) => style.imageUrl
+        ) as string[]
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "画像取得に失敗しました。";
+      setErrorMessage(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const downloadFromUrl = async (url: string) => {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const filename = url.split("/").pop() || "preview.png";
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    a.click();
+
+    URL.revokeObjectURL(blobUrl);
+  };
+
   const handleSelectHistory = (item: HistoryItem) => {
     setResultUrl(item.outputUrl);
     setHistorySelfUrl(item.inputUrl);
@@ -179,11 +222,37 @@ export default function Home() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
             AI Hair Simulator
           </p>
-          <h1 className="text-3xl font-bold sm:text-4xl">髪型AIシミュレーター</h1>
+          <h1 className="text-3xl font-bold sm:text-4xl">
+            髪型AIシミュレーター
+          </h1>
           <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
             自分の写真と参考の髪型画像をアップロードして、AI変換結果を確認するMVPです。
           </p>
         </header>
+
+        <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">サンプル画像一覧</h2>
+            <div className="grid grid-cols-3 gap-4">
+              {sampleUrl.map((url: string) => (
+                <a
+                  key={url}
+                  href={url}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    downloadFromUrl(url);
+                  }}
+                >
+                  <img
+                    src={url}
+                    alt="サンプル画像"
+                    className="w-full h-full object-cover"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
